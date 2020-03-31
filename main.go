@@ -1,155 +1,162 @@
 package main
 
 import (
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
-	"gopkg.in/alecthomas/kingpin.v1"
+	"github.com/w564791/prometheus-cert-exporter/cert"
+	"gopkg.in/alecthomas/kingpin.v2"
 	"io/ioutil"
-	//"log"
+	//"k8s.io/client_go/rest"
+	//"math/rand"
 	"net/http"
 	"os"
-	"time"
 )
 
 var (
-	Paths = kingpin.Flag("path","cert path,provide file/dir").Required().Strings()
-	CertExp = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name:      "cert_exp_date",
-			Help:      "Number of blob storage operations waiting to be processed, partitioned by user and type.",
-		},
-		[]string{
-			"name",
-			"from",
-			"after",
-		},
-	)
-	filesA=make(map[string]string)
+	Paths = kingpin.Flag("path", "cert path,provide file/dir").Required().Strings()
 )
-// 判断所给路径是否为文件夹
-func IsDir(path string) bool {
-	s, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return s.IsDir()
+
+type ClusterManager struct {
+	Zone        string
+	CERTmanager *prometheus.Desc
 }
 
-// 判断所给路径是否为文件
-func IsFile(path string) bool {
-	return !IsDir(path)
+//func (c *ClusterManager) ReallyExpensiveAssessmentOfTheSystemState() (
+//	oomCountByHost []map[string]interface{},
+//	//ramUsageByHost map[string]float64,
+//) {
+//
+//	ToomCountByHost := map[string]interface{}{
+//		"value": float64(rand.Int31n(1000)),
+//		"label": []string{"2019","2018"},
+//	}
+//	//ramUsageByHost = map[string]float64{
+//	//	"foo.example.org": rand.Float64() * 100,
+//	//	"bar.example.org": rand.Float64() * 100,
+//	//}
+//	oomCountByHost= append(oomCountByHost, ToomCountByHost)
+//	return
+//}
+
+func (c *ClusterManager) ReallyExpensiveAssessmentOfTheSystemState(path string) (
+	lables []string, value float64,
+	//ramUsageByHost map[string]float64,
+) {
+
+	//var ss=make(map[string]string)
+	lables, value = cert.ParsePem(path)
+	//log.Error("ssss",lables)
+	//oomCountByHost=append(oomCountByHost, map[string]interface{}{
+	//	"value":value,
+	//	"labels":lables,
+	//
+	//})
+
+	//ramUsageByHost = map[string]float64{
+	//	"foo.example.org": rand.Float64() * 100,
+	//	"bar.example.org": rand.Float64() * 100,
+	//}
+	return
 }
-func parsePemFile(ps []string)  {
-	var ss=make(map[string]string)
-	for _,p :=range ps{
-		parsePem(p,ss)
-
-	}
+func (c *ClusterManager) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.CERTmanager
 
 }
 
-func parsePem(path string,temp map[string]string) {
-	//var filesM []string
+func (c *ClusterManager) Collect(ch chan<- prometheus.Metric) {
+	//var oomCountByHost []string
+	var labels []string
+	var value float64
+	for _, path := range *Paths {
+		if cert.IsFile(path) {
+			//log.Error("err labels value",*labels,*value)
+			labels, value = c.ReallyExpensiveAssessmentOfTheSystemState(path)
+			if labels == nil {
+				return
+			}
+			ch <- prometheus.MustNewConstMetric(
+				c.CERTmanager,
+				prometheus.CounterValue,
+				value,
+				labels...,
+			)
 
-	if IsFile(path){
+		} else if cert.IsDir(path) {
+			files, err := ioutil.ReadDir(path)
+			if err != nil {
+				log.Error(err.Error())
+			}
+			for _, file := range files {
+				labels, value = c.ReallyExpensiveAssessmentOfTheSystemState(fmt.Sprintf("%s/%s", path, file.Name()))
+				if labels == nil {
+					return
+				}
+				ch <- prometheus.MustNewConstMetric(
+					c.CERTmanager,
+					prometheus.CounterValue,
+					value,
+					labels...,
+				)
 
-		log.Info("found file",path)
-		certPEMBlock, err := ioutil.ReadFile(path)
-
-		if err != nil {
-			log.Error(err.Error())
-			return
-		}
-		//获取证书信息 -----BEGIN CERTIFICATE-----   -----END CERTIFICATE-----
-		//这里返回的第二个值是证书中剩余的 block, 一般是rsa私钥 也就是 -----BEGIN RSA PRIVATE KEY 部分
-		//一般证书的有效期，组织信息等都在第一个部分里
-		roots := x509.NewCertPool()
-		if ok := roots.AppendCertsFromPEM(certPEMBlock);!ok{
-			log.Warnln(fmt.Sprintf("%s not a eff certificate",path))
-			return
-		}
-		temp[path] = "true"
-
-		filesA[path]="true"
-
-		certDERBlock, _ := pem.Decode(certPEMBlock)
-
-		if certDERBlock == nil {
-			log.Error("err",err.Error())
-			//return
-		}
-		//layout:="2006-01-02 15:04:05"
-
-		x509Cert, err := x509.ParseCertificate(certDERBlock.Bytes)
-		if err != nil {
-			log.Info(err.Error())
-
-		}
-
-		Tnow:=time.Now()
-		After:=x509Cert.NotAfter
-		From:=x509Cert.NotBefore
-
-		tn:=time.Date(Tnow.Year(),Tnow.Month(),Tnow.Day(),0,0,0,0,time.Local)
-		tf:=time.Date(After.Year(),After.Month(),After.Day(),0,0,0,0,time.Local)
-		//CertExp.With(prometheus.Labels{
-		//	"name": path,
-		//	"from":From.String(),
-		//	"after":  After.String(),
-		//}).Inc()
-
-		CertExp.WithLabelValues(path,From.String(),After.String()).Set(tf.Sub(tn).Hours())
-		//CertExp.WithLabelValues(path,From.String(),After.String())
-		//ok:=CertExp.Delete(map[string]string{"name":"ca3.pem"})
-		//fmt.Println(ok)
-		for k,_:=range filesA{
-			if _,ok:=temp[k];!ok{
-				CertExp.WithLabelValues(k,From.String(),After.String()).Set(-1)
 			}
 		}
 
+		//log.Error("6666",*value,*labels)
 
-		//CertExp.Delete("name":"")
-	}else if IsDir(path){
-		files, err := ioutil.ReadDir(path)
-		if err != nil {
-			log.Error(err.Error())
-		}
-		for _,file :=range files{
-			parsePem(fmt.Sprintf("%s/%s",path,file.Name()),temp)
+		//label:=strings.Join(host,",")
 
-		}
 	}
 
+	//var ss=make(map[string]string)
+	//var from,  =
+	//for _,p :=range {
+	//	from,after,date:=cert.ParsePem(p,ss)
+	//
+	//}
+	//log.Error("oomCountByHost:",oomCountByHost)
 
 }
-func init() {
-	prometheus.MustRegister(CertExp)
+
+func NewClusterManager(zone string) *ClusterManager {
+	return &ClusterManager{
+		Zone: zone,
+		CERTmanager: prometheus.NewDesc(
+			"cert_exp_date",
+			"cert_exp_date",
+			[]string{"after", "from", "name"},
+			prometheus.Labels{},
+		),
+	}
 }
 
-func main(){
-
+func main() {
 	kingpin.Parse()
+	workerDB := NewClusterManager("db")
 
-	go func() {
-		for   {
-
-			parsePemFile(*Paths)
-			time.Sleep(time.Duration(10 *time.Second))
-		}
-	}()
-	http.Handle("/metrics", promhttp.HandlerFor(
+	// Since we are dealing with custom Collector implementations, it might
+	// be a good idea to try it out with a pedantic registry.
+	reg := prometheus.NewPedanticRegistry()
+	reg.MustRegister(workerDB)
+	//reg.MustRegister(workerCA)
+	gatherers := prometheus.Gatherers{
 		prometheus.DefaultGatherer,
-		promhttp.HandlerOpts{
-			// Opt into OpenMetrics to support exemplars.
-			EnableOpenMetrics: true,
-		},
-	))
-	log.Fatal(http.ListenAndServe(":9090",nil))
+		reg,
+	}
 
+	h := promhttp.HandlerFor(gatherers,
+		promhttp.HandlerOpts{
+			ErrorLog:      log.NewErrorLogger(),
+			ErrorHandling: promhttp.ContinueOnError,
+		})
+	http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r)
+	})
+	log.Infoln("Start server at :8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Errorf("Error occur when start server %v", err)
+		os.Exit(1)
+	}
 
 }

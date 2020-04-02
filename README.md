@@ -1,4 +1,4 @@
-##cert exp date monitor
+## cert exp date monitor
 use to monitor certficate file exp date
 
 exporter infomation: 
@@ -10,10 +10,12 @@ exporter infomation:
 3. domain
 
 4. cert path
+
 args:
 
 ```text
---path  type  dir/files Provide certificate file path
+--path  type  dir/file
+               Provide certificate file path
 ```
 
 example:

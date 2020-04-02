@@ -1,6 +1,7 @@
 package main
 
 import (
+	//"errors"
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -8,10 +9,14 @@ import (
 	"github.com/w564791/prometheus-cert-exporter/cert"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"io/ioutil"
-	//"k8s.io/client_go/rest"
 	//"math/rand"
 	"net/http"
 	"os"
+)
+
+const (
+	//tokenFile  = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+	rootCAFile = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 )
 
 var (
@@ -19,7 +24,7 @@ var (
 )
 
 type ClusterManager struct {
-	Zone        string
+	//Zone        string
 	CERTmanager *prometheus.Desc
 }
 
@@ -64,50 +69,101 @@ func (c *ClusterManager) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.CERTmanager
 
 }
+func (c *ClusterManager) parsePemFile(ch chan<- prometheus.Metric, ps []string) {
+	//var ss=make(map[string]string)
+	//var ch chan<- prometheus.Metric
+	for _, p := range ps {
+		//if err:=c.PathDermination(ch,p);err!=nil{
+		//panic(err)
+		//log.Error(err)
+		//}
+		c.PathDermination(ch, p)
+	}
+
+}
+func (c *ClusterManager) PathDermination(ch chan<- prometheus.Metric, path string) {
+	//for _, path := range *Paths {
+	if cert.IsFile(path) {
+		labels, value := c.ReallyExpensiveAssessmentOfTheSystemState(path)
+		if labels == nil {
+
+			//msg:=fmt.Sprintf("labels No value provides%s",path)
+			//return errors.New(msg)
+			return
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.CERTmanager,
+			prometheus.CounterValue,
+			value,
+			labels...,
+		//return
+		)
+	} else if cert.IsDir(path) {
+		files, err := ioutil.ReadDir(path)
+		if err != nil {
+			log.Error(err.Error())
+		}
+		for _, file := range files {
+			filePath := fmt.Sprintf("%s/%s", path, file.Name())
+			//log.Info("filepath:----",filePath)
+			//if err:=c.PathDermination(ch,filePath);err!=nil{
+			//	log.Error(err)
+			//}
+			c.PathDermination(ch, filePath)
+		}
+	}
+	//}
+	return
+}
 
 func (c *ClusterManager) Collect(ch chan<- prometheus.Metric) {
 	//var oomCountByHost []string
-	var labels []string
-	var value float64
-	for _, path := range *Paths {
-		if cert.IsFile(path) {
-			//log.Error("err labels value",*labels,*value)
-			labels, value = c.ReallyExpensiveAssessmentOfTheSystemState(path)
-			if labels == nil {
-				return
-			}
-			ch <- prometheus.MustNewConstMetric(
-				c.CERTmanager,
-				prometheus.CounterValue,
-				value,
-				labels...,
-			)
-
-		} else if cert.IsDir(path) {
-			files, err := ioutil.ReadDir(path)
-			if err != nil {
-				log.Error(err.Error())
-			}
-			for _, file := range files {
-				labels, value = c.ReallyExpensiveAssessmentOfTheSystemState(fmt.Sprintf("%s/%s", path, file.Name()))
-				if labels == nil {
-					return
-				}
-				ch <- prometheus.MustNewConstMetric(
-					c.CERTmanager,
-					prometheus.CounterValue,
-					value,
-					labels...,
-				)
-
-			}
-		}
-
-		//log.Error("6666",*value,*labels)
-
-		//label:=strings.Join(host,",")
-
-	}
+	*Paths = append(*Paths, rootCAFile)
+	c.parsePemFile(ch, *Paths)
+	//var labels []string
+	//var value float64
+	////log.Error(*Paths)
+	//for _, path := range *Paths {
+	//	//log.Error("path of :" ,path)
+	//	if cert.IsFile(path) {
+	//		//log.Error("err labels value",*labels,*value)
+	//		labels, value = c.ReallyExpensiveAssessmentOfTheSystemState(path)
+	//		if labels == nil {
+	//			continue
+	//		}
+	//		ch <- prometheus.MustNewConstMetric(
+	//			c.CERTmanager,
+	//			prometheus.CounterValue,
+	//			value,
+	//			labels...,
+	//		)
+	//
+	//	} else if cert.IsDir(path) {
+	//		files, err := ioutil.ReadDir(path)
+	//		if err != nil {
+	//			log.Error(err.Error())
+	//		}
+	//		for _, file := range files {
+	//			labels, value = c.ReallyExpensiveAssessmentOfTheSystemState(fmt.Sprintf("%s/%s", path, file.Name()))
+	//			if labels == nil {
+	//				continue
+	//			}
+	//			//log.Error(labels)
+	//			ch <- prometheus.MustNewConstMetric(
+	//				c.CERTmanager,
+	//				prometheus.CounterValue,
+	//				value,
+	//				labels...,
+	//			)
+	//
+	//		}
+	//	}
+	//
+	//	//log.Error("6666",*value,*labels)
+	//
+	//	//label:=strings.Join(host,",")
+	//
+	//}
 
 	//var ss=make(map[string]string)
 	//var from,  =
@@ -119,13 +175,13 @@ func (c *ClusterManager) Collect(ch chan<- prometheus.Metric) {
 
 }
 
-func NewClusterManager(zone string) *ClusterManager {
+func NewClusterManager() *ClusterManager {
 	return &ClusterManager{
-		Zone: zone,
+		//Zone: zone,
 		CERTmanager: prometheus.NewDesc(
 			"cert_exp_date",
 			"cert_exp_date",
-			[]string{"after", "from", "name"},
+			[]string{"after", "from", "name", "domain"},
 			prometheus.Labels{},
 		),
 	}
@@ -133,7 +189,8 @@ func NewClusterManager(zone string) *ClusterManager {
 
 func main() {
 	kingpin.Parse()
-	workerDB := NewClusterManager("db")
+
+	workerDB := NewClusterManager()
 
 	// Since we are dealing with custom Collector implementations, it might
 	// be a good idea to try it out with a pedantic registry.

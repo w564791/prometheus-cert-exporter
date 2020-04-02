@@ -5,6 +5,9 @@ import (
 	"encoding/pem"
 	"fmt"
 	"github.com/prometheus/common/log"
+	//"net"
+	"strings"
+
 	//"golang.org/x/net/http2"
 	"io/ioutil"
 	//"strconv"
@@ -38,7 +41,7 @@ func ParsePem(path string,
 
 	if IsFile(path) {
 
-		log.Info("found file: ", path)
+		log.Info("accept file: ", path)
 		certPEMBlock, err := ioutil.ReadFile(path)
 
 		if err != nil {
@@ -70,12 +73,14 @@ func ParsePem(path string,
 		Tnow := time.Now()
 		After := x509Cert.NotAfter
 		From := x509Cert.NotBefore
+		Domain := strings.Join(x509Cert.DNSNames, "/")
+		//Ip:=net.IPNet(x509Cert.IPAddresses,"")
 		//Domain:=x509Cert.do
 
 		tn := time.Date(Tnow.Year(), Tnow.Month(), Tnow.Day(), 0, 0, 0, 0, time.Local)
 		tf := time.Date(After.Year(), After.Month(), After.Day(), 0, 0, 0, 0, time.Local)
 
-		lables = []string{After.Format(lay_out), From.Format(lay_out), path}
+		lables = []string{After.Format(lay_out), From.Format(lay_out), path, Domain}
 
 		return lables, tf.Sub(tn).Hours()
 
